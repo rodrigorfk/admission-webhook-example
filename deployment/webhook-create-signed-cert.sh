@@ -21,6 +21,7 @@ The following flags are required.
        --service          Service name of webhook.
        --namespace        Namespace where webhook service and secret reside.
        --secret           Secret name for CA certificate and server certificate/key pair.
+       --password         P12 file password.
 EOF
     exit 1
 }
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
             namespace="$2"
             shift
             ;;
+        --password)
+            password="$2"
+            shift
+            ;;
         *)
             usage
             ;;
@@ -49,6 +54,7 @@ done
 [ -z ${service} ] && service=admission-webhook-example-svc
 [ -z ${secret} ] && secret=admission-webhook-example-certs
 [ -z ${namespace} ] && namespace=default
+[ -z ${password} ] && password=12345
 
 if [ ! -x "$(command -v openssl)" ]; then
     echo "openssl not found"
@@ -120,11 +126,15 @@ if [[ ${serverCert} == '' ]]; then
     exit 1
 fi
 echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
+#echo $tmpdir
+openssl pkcs12 -export -inkey ${tmpdir}/server-key.pem -in ${tmpdir}/server-cert.pem -name default -out ${tmpdir}/cert.p12 -password pass:${password}
 
 
 # create the secret with CA cert and server cert/key
 kubectl create secret generic ${secret} \
         --from-file=key.pem=${tmpdir}/server-key.pem \
         --from-file=cert.pem=${tmpdir}/server-cert.pem \
+        --from-file=cert.p12=${tmpdir}/cert.p12 \
+        --from-literal=p12-password=${password} \
         --dry-run -o yaml |
     kubectl -n ${namespace} apply -f -
